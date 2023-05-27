@@ -1,0 +1,331 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
+#define BOARD_SIZE 8
+#define NUM_PIECES 16
+#define NUM_COLORS 4
+#define NUM_PLAYERS 2
+#define NUM_ROUNDS 3
+
+#ifndef COULEURS
+#define COULEURS
+
+#include <stdio.h>
+
+#define clrscr() printf("\033[H\033[2J")
+#define couleur(param) printf("\033[%sm",param)
+
+#endif
+typedef enum {
+    RED,
+    GREEN,
+    BLUE,
+    YELLOW
+} Color;
+typedef enum {
+  Player_1,
+  Player_2,
+} Playerid;
+
+typedef enum {
+    NORMAL,
+    PROMOTED
+} PieceType;
+
+typedef struct {
+    int x;
+    int y;
+} Position;
+
+typedef struct {
+    Color color;
+    PieceType type;
+    Position position;
+} Piece;
+
+typedef struct {
+    Playerid id;
+    Piece pieces[NUM_PIECES];
+    int num_pieces;
+    int couleur;
+} Player;
+
+typedef struct {
+    Player players[NUM_PLAYERS];
+    int active_player;
+    int num_rounds;
+    int winner;
+} Game;
+
+void init_game(Game *game) {
+    game->active_player = 0;
+    game->num_rounds = NUM_ROUNDS;
+    game->winner = -1;
+    for (int i = 0; i < NUM_PLAYERS; i++) {
+        game->players[i].num_pieces = NUM_PIECES;
+        for (int j = 0; j < NUM_PIECES; j++) {
+            game->players[i].pieces[j].type = NORMAL;
+            game->players[i].pieces[j].color = i;
+            game->players[i].pieces[j].position.x = i * (BOARD_SIZE - 1);
+            game->players[i].pieces[j].position.y = j;
+        }
+    }
+}
+
+/*void print_board(Game *game) {
+    for (int i = 0; i < BOARD_SIZE; i++) {
+        for (int j = 0; j < BOARD_SIZE; j++) {
+            bool found = false;
+            for (int k = 0; k < NUM_PIECES; k++) {
+                if (game->players[0].pieces[k].position.x == i && game->players[0].pieces[k].position.y == j) {
+                    printf("%d ", game->players[0].pieces[k].color);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                for (int k = 0; k < NUM_PIECES; k++) {
+                    if (game->players[1].pieces[k].position.x == i && game->players[1].pieces[k].position.y == j) {
+                        printf("%d ", game->players[1].pieces[k].color);
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if (!found) {
+                printf("- ");
+            }
+        }
+        printf("\n");
+    }
+}*/
+void print_board(Game *game) {
+    // Print top border
+    couleur("37");  // Set color to white
+    for (int i = 0; i < BOARD_SIZE * 2 + 2; i++) {
+        printf("*");
+    }
+    printf("\n");
+    // Reset color
+    couleur("0");
+
+    for (int i = 0; i < BOARD_SIZE; i++) {
+        couleur("37");  // Set color to white
+        printf("*");  // Print left border
+        couleur("0");
+        for (int j = 0; j < BOARD_SIZE; j++) {
+            // Change background color for each diagonal
+            char color_code[10];
+            sprintf(color_code, "%d", 40 + abs(i - j) % 8); // This will alternate between 8 different colors
+            couleur(color_code);
+            bool found = false;
+            for (int k = 0; k < NUM_PIECES; k++) {
+                if (game->players[0].pieces[k].position.x == i && game->players[0].pieces[k].position.y == j) {
+                    printf("%02d", game->players[0].pieces[k].color);  // Always print two digits
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                for (int k = 0; k < NUM_PIECES; k++) {
+                    if (game->players[1].pieces[k].position.x == i && game->players[1].pieces[k].position.y == j) {
+                        printf("%02d", game->players[1].pieces[k].color);  // Always print two digits
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if (!found) {
+                printf("  "); // Two spaces will fill more of the background with color
+            }
+            printf("\033[0m");  // Reset color for the next cell
+        }
+        couleur("37");  // Set color to white
+        printf("*\n");  // Print right border
+        // Reset color
+        couleur("0");
+    }
+
+    // Print bottom border
+    couleur("37");  // Set color to white
+    for (int i = 0; i < BOARD_SIZE * 2 + 2; i++) {
+        printf("*");
+    }
+    printf("\n");
+    // Reset color
+    couleur("0");
+}
+
+bool is_valid_move(Game *game, Player player, Piece piece,Position deplacement) {
+    if (deplacement.x < 0 || deplacement.x >= BOARD_SIZE || deplacement.y < 0 || deplacement.y >= BOARD_SIZE) {
+        return false;
+    }
+    if(piece.position.y != deplacement.y){
+        if(player.id == Player_1 && piece.position.y > deplacement.y)
+            return false;
+        else if(player.id == Player_2 && piece.position.y < deplacement.y)
+            return false;
+        else
+            return true;
+    }
+
+    for (int i = 0; i < NUM_PIECES; i++) {
+        if (game->players[NUM_PLAYERS].pieces[i].position.x == deplacement.x && game->players[NUM_PLAYERS].pieces[i].position.y >= deplacement.y) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool is_valid_push(Game *game, int player, int piece, int x, int y) {
+    if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE) {
+        return false;
+    }
+    if (game->players[player].pieces[piece].type == NORMAL) {
+        if (abs(game->players[player].pieces[piece].position.x - x) > 1 || abs(game->players[player].pieces[piece].position.y - y) > 1) {
+            return false;
+        }
+    } else {
+        if (abs(game->players[player].pieces[piece].position.x - x) > 2 || abs(game->players[player].pieces[piece].position.y - y) > 2) {
+            return false;
+        }
+    }
+    for (int i = 0; i < NUM_PIECES; i++) {
+        if (game->players[player].pieces[i].position.x == x && game->players[player].pieces[i].position.y == y) {
+            return false;
+        }
+    }
+    for (int i = 0; i < NUM_PIECES; i++) {
+        if (game->players[1 - player].pieces[i].position.x == x && game->players[1 - player].pieces[i].position.y == y) {
+            if (game->players[1 - player].pieces[i].type == PROMOTED) {
+                return false;
+            }
+            if (game->players[player].pieces[piece].type == NORMAL) {
+                if (abs(game->players[1 - player].pieces[i].position.x - x) > 1 || abs(game->players[1 - player].pieces[i].position.y - y) > 1) {
+                    return false;
+                }
+            } else {
+                if (abs(game->players[1 - player].pieces[i].position.x - x) > 2 || abs(game->players[1 - player].pieces[i].position.y - y) > 2) {
+                    return false;
+                }
+            }
+            for (int j = 0; j < NUM_PIECES; j++) {
+                if (game->players[1 - player].pieces[j].position.x == game->players[1 - player].pieces[i].position.x + (x - game->players[player].pieces[piece].position.x) && game->players[1 - player].pieces[j].position.y == game->players[1 - player].pieces[i].position.y + (y - game->players[player].pieces[piece].position.y)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_valid_promotion(Game *game, int player, int piece) {
+    if (game->players[player].pieces[piece].type == PROMOTED) {
+        return false;
+    }
+    if (game->players[player].pieces[piece].position.x == 0 || game->players[player].pieces[piece].position.x == BOARD_SIZE - 1) {
+        return true;
+    }
+    return false;
+}
+
+void move_piece(Game *game, int player, int piece, int x, int y) {
+    game->players[player].pieces[piece].position.x = x;
+    game->players[player].pieces[piece].position.y = y;
+}
+
+void push_piece(Game *game, int player, int piece, int x, int y) {
+    for (int i = 0; i < NUM_PIECES; i++) {
+        if (game->players[1 - player].pieces[i].position.x == x && game->players[1 - player].pieces[i].position.y == y) {
+            game->players[1 - player].pieces[i].position.x += (x - game->players[player].pieces[piece].position.x);
+            game->players[1 - player].pieces[i].position.y += (y - game->players[player].pieces[piece].position.y);
+            break;
+        }
+    }
+    game->players[player].pieces[piece].position.x = x;
+    game->players[player].pieces[piece].position.y = y;
+}
+
+void promote_piece(Game *game, int player, int piece) {
+    game->players[player].pieces[piece].type = PROMOTED;
+}
+
+void next_turn(Game *game) {
+    game->active_player = 1 - game->active_player;
+}
+
+void next_round(Game *game) {
+    game->num_rounds--;
+    game->active_player = 0;
+    for (int i = 0; i < NUM_PIECES; i++) {
+        game->players[0].pieces[i].type = NORMAL;
+        game->players[0].pieces[i].color = i;
+        game->players[0].pieces[i].position.x = 0;
+        game->players[0].pieces[i].position.y = i;
+        game->players[1].pieces[i].type = NORMAL;
+        game->players[1].pieces[i].color = i;
+        game->players[1].pieces[i].position.x = BOARD_SIZE - 1;
+        game->players[1].pieces[i].position.y = i;
+    }
+}
+
+bool is_game_over(Game *game) {
+    if (game->num_rounds == 0) {
+        return true;
+    }
+    for (int i = 0; i < NUM_PIECES; i++) {
+        if (game->players[0].pieces[i].position.x == BOARD_SIZE - 1) {
+            game->winner = 0;
+            return true;
+        }
+        if (game->players[1].pieces[i].position.x == 0) {
+            game->winner = 1;
+            return true;
+        }
+    }
+    return false;
+}
+
+int main() {
+    Game game;
+    init_game(&game);
+    while (!is_game_over(&game)) {
+        print_board(&game);
+        printf("Player %d's turn.\n", game.active_player);
+        printf("Enter piece x : "); 
+        Piece piece;
+        scanf("%d", &(piece.position.x));
+        printf("Enter piece y : "); 
+        scanf("%d", &(piece.position.y));
+        printf("Enter destination x: ");
+        int x;
+        scanf("%d", &x);
+        printf("Enter destination y: ");
+        int y;
+        scanf("%d", &y);
+        if (is_valid_move(&game, game.active_player, piece, position)) {
+            move_piece(&game, game.active_player, piece, x, y);
+            if (is_valid_promotion(&game, game.active_player, piece)) {
+                promote_piece(&game, game.active_player, piece);
+            }
+            next_turn(&game);
+        } else if (is_valid_push(&game, game.active_player, piece, x, y)) {
+            push_piece(&game, game.active_player, piece, x, y);
+            if (is_valid_promotion(&game, game.active_player, piece)) {
+                promote_piece(&game, game.active_player, piece);
+            }
+            next_turn(&game);
+        } else {
+            printf("Invalid move.\n");
+            next_turn(&game);
+            next_turn(&game);
+        }
+    }
+    print_board(&game);
+    printf("Player %d wins!\n", game.winner);
+    return 0;
+}
+	
